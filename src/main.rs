@@ -30,44 +30,43 @@ struct WheaterStation {
 }
 
 // Time only reading 100_000_000: 4.56s
+// Reusing String as line buffer. 9.4s
 fn read_and_process_file(input_file: &str, weather_stations: &mut HashMap<String, WheaterStation>) {
     let start = Instant::now();
 
     let file = fs::File::open(input_file).unwrap();
-    let reader = io::BufReader::with_capacity(1_000_000, file);
-    eprintln!("cap of buf reader {:?}", reader.capacity());
-    let contents = reader.lines();
+    let mut reader = io::BufReader::with_capacity(1_000_000, file);
 
-    contents
-        .map(|e| e.unwrap())
-        .filter(|line| !line.is_empty())
-        .for_each(|line| {
-            let (station_name, measurement) = line.split_once(';').unwrap();
-            let station_name = station_name.to_string();
-            // This is more performant, than parsing once but on an allocated string.
-            let measurement = measurement.split_once('.').unwrap();
-            let measurement = (measurement.0.parse::<i32>().unwrap() * 10)
-                + (measurement.1.parse::<i32>().unwrap());
+    let mut line = String::with_capacity(100);
+    while reader.read_line(&mut line).unwrap() > 0 {
+        let (station_name, measurement) = line.trim().split_once(';').unwrap();
+        let station_name = station_name.to_string();
+        // This is more performant, than parsing once but on an allocated string.
+        let measurement = measurement.split_once('.').unwrap();
+        let measurement =
+            (measurement.0.parse::<i32>().unwrap() * 10) + (measurement.1.parse::<i32>().unwrap());
 
-            weather_stations
-                .entry(station_name)
-                .and_modify(|ws| {
-                    ws.count += 1;
-                    ws.sum += measurement;
-                    if measurement < ws.min {
-                        ws.min = measurement;
-                    }
-                    if measurement > ws.max {
-                        ws.max = measurement;
-                    }
-                })
-                .or_insert_with(|| WheaterStation {
-                    count: 1,
-                    sum: measurement,
-                    min: measurement,
-                    max: measurement,
-                });
-        });
+        weather_stations
+            .entry(station_name)
+            .and_modify(|ws| {
+                ws.count += 1;
+                ws.sum += measurement;
+                if measurement < ws.min {
+                    ws.min = measurement;
+                }
+                if measurement > ws.max {
+                    ws.max = measurement;
+                }
+            })
+            .or_insert_with(|| WheaterStation {
+                count: 1,
+                sum: measurement,
+                min: measurement,
+                max: measurement,
+            });
+
+        line.clear();
+    }
 
     eprintln!("Reading and processing: {:?}", start.elapsed());
 }
