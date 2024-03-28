@@ -25,8 +25,8 @@ fn main() {
 struct WheaterStation {
     count: u32,
     sum: i32,
-    min: i32,
-    max: i32,
+    min: i16,
+    max: i16,
 }
 
 // Time only reading 100_000_000: 4.56s
@@ -44,13 +44,13 @@ fn read_and_process_file(input_file: &str, weather_stations: &mut HashMap<String
         // This is more performant, than parsing once but on an allocated string.
         let measurement = measurement.split_once('.').unwrap();
         let measurement =
-            (measurement.0.parse::<i32>().unwrap() * 10) + (measurement.1.parse::<i32>().unwrap());
+            (measurement.0.parse::<i16>().unwrap() * 10) + (measurement.1.parse::<i16>().unwrap());
 
         weather_stations
             .entry(station_name)
             .and_modify(|ws| {
                 ws.count += 1;
-                ws.sum += measurement;
+                ws.sum += measurement as i32;
                 if measurement < ws.min {
                     ws.min = measurement;
                 }
@@ -60,7 +60,7 @@ fn read_and_process_file(input_file: &str, weather_stations: &mut HashMap<String
             })
             .or_insert_with(|| WheaterStation {
                 count: 1,
-                sum: measurement,
+                sum: measurement as i32,
                 min: measurement,
                 max: measurement,
             });
