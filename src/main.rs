@@ -24,7 +24,7 @@ fn main() {
     let start = Instant::now();
 
     let (sender, receiver) = mpsc::channel();
-    let reader_thread = read_chunks(sender, "measurements-100000000.txt".to_string());
+    let reader_thread = read_chunks(sender, "measurements-100_000_000.txt".to_string());
     let worker_thread = process_chunks(receiver);
     reader_thread.join().unwrap();
     worker_thread.join().unwrap();
@@ -60,7 +60,7 @@ fn read_chunks(sender: Sender<(Vec<u8>, usize)>, input_file: String) -> JoinHand
                 read_bytes += additional_bytes_read;
             }
 
-            println!("read bytes {}", read_bytes);
+            // println!("read bytes {}", read_bytes);
             sender.send((buffer, read_bytes)).unwrap();
         }
 
@@ -73,10 +73,10 @@ fn process_chunks(receiver: Receiver<(Vec<u8>, usize)>) -> JoinHandle<()> {
         let start = Instant::now();
         let mut weather_stations = HashMap::with_capacity(500);
 
-        let mut counter = 0;
+        // let mut counter = 0;
         for received in receiver {
-            println!("### I received len {}, part {}", received.1, counter);
-            counter += 1;
+            // println!("### I received part {counter} len {}, ", received.1);
+            // counter += 1;
             received.0[..received.1]
                 .lines()
                 .map(|e| e.unwrap())
