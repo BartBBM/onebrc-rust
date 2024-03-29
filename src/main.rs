@@ -10,6 +10,7 @@ use std::{
     time::Instant,
 };
 
+const WORKERS: usize = 10;
 const CHUNK_SIZE: usize = 10_000_000 + 100;
 
 // Will be all stored as 10 times of the actual value (having no values after the comma)
@@ -23,22 +24,36 @@ fn main() {
     eprintln!("Starting...");
     let start = Instant::now();
 
-    let (sender, receiver) = mpsc::channel();
-    let reader_thread = read_chunks(sender, "measurements-100_000_000.txt".to_string());
-    let worker_thread = process_chunks(receiver);
+    let mut senders = Vec::with_capacity(WORKERS);
+    let mut receivers = Vec::with_capacity(WORKERS);
+    for _ in 0..WORKERS {
+        let (sender, receiver) = mpsc::channel();
+        senders.push(sender);
+        receivers.push(receiver);
+    }
+    let reader_thread = read_chunks(senders, "measurements-1000_000_000.txt".to_string());
+
+    let mut worker_thread_handles = Vec::with_capacity(WORKERS);
+    receivers
+        .into_iter()
+        .for_each(|rcv| worker_thread_handles.push(process_chunks(rcv)));
+
     reader_thread.join().unwrap();
-    worker_thread.join().unwrap();
+    worker_thread_handles
+        .into_iter()
+        .for_each(|h| h.join().unwrap());
 
     eprintln!("Complete Time: {:?}", start.elapsed());
 }
 
-fn read_chunks(sender: Sender<(Vec<u8>, usize)>, input_file: String) -> JoinHandle<()> {
+fn read_chunks(senders: Vec<Sender<(Vec<u8>, usize)>>, input_file: String) -> JoinHandle<()> {
     thread::spawn(move || {
         let start = Instant::now();
 
         let file = fs::File::open(input_file).unwrap();
         let mut reader = io::BufReader::with_capacity(10_000_000, file);
 
+        let mut chunk_count = 0;
         loop {
             let mut buffer: Vec<u8> = vec![0; CHUNK_SIZE];
             let mut read_bytes = reader.read(&mut buffer[0..CHUNK_SIZE - 100]).unwrap();
@@ -61,7 +76,10 @@ fn read_chunks(sender: Sender<(Vec<u8>, usize)>, input_file: String) -> JoinHand
             }
 
             // println!("read bytes {}", read_bytes);
-            sender.send((buffer, read_bytes)).unwrap();
+            senders[chunk_count % WORKERS]
+                .send((buffer, read_bytes))
+                .unwrap();
+            chunk_count += 1;
         }
 
         eprintln!("Time reading and sending: {:?}", start.elapsed());
