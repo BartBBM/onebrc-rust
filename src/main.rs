@@ -11,7 +11,7 @@ use std::{
 };
 
 const WORKERS: usize = 10;
-const CHUNK_SIZE: usize = 10_000_000 + 100;
+const CHUNK_SIZE: usize = 1_000_000 + 100;
 
 // Will be all stored as 10 times of the actual value (having no values after the comma)
 struct WeatherStation {
@@ -39,9 +39,10 @@ fn main() {
         .for_each(|rcv| worker_thread_handles.push(process_chunks(rcv)));
 
     reader_thread.join().unwrap();
-    worker_thread_handles
-        .into_iter()
-        .for_each(|h| h.join().unwrap());
+    let fun = worker_thread_handles.into_iter().map(|h| h.join().unwrap());
+
+    let weather_stations = merge_results(fun);
+    print_results(weather_stations);
 
     eprintln!("Complete Time: {:?}", start.elapsed());
 }
@@ -86,7 +87,9 @@ fn read_chunks(senders: Vec<Sender<(Vec<u8>, usize)>>, input_file: String) -> Jo
     })
 }
 
-fn process_chunks(receiver: Receiver<(Vec<u8>, usize)>) -> JoinHandle<()> {
+fn process_chunks(
+    receiver: Receiver<(Vec<u8>, usize)>,
+) -> JoinHandle<HashMap<String, WeatherStation>> {
     thread::spawn(move || {
         let start = Instant::now();
         let mut weather_stations = HashMap::with_capacity(500);
@@ -129,8 +132,8 @@ fn process_chunks(receiver: Receiver<(Vec<u8>, usize)>) -> JoinHandle<()> {
                 });
         }
 
-        print_results(weather_stations);
         eprintln!("Processing: {:?}", start.elapsed());
+        weather_stations
     })
 }
 
@@ -175,6 +178,38 @@ fn process_chunks(receiver: Receiver<(Vec<u8>, usize)>) -> JoinHandle<()> {
 
     eprintln!("Reading and processing: {:?}", start.elapsed());
 } */
+
+fn merge_results(
+    fun: std::iter::Map<
+        std::vec::IntoIter<JoinHandle<HashMap<String, WeatherStation>>>,
+        impl FnMut(JoinHandle<HashMap<String, WeatherStation>>) -> HashMap<String, WeatherStation>,
+    >,
+) -> HashMap<String, WeatherStation> {
+    let start = Instant::now();
+
+    let fun = fun
+        .reduce(|mut acc, e| {
+            e.into_iter().for_each(|record_in_e| {
+                acc.entry(record_in_e.0)
+                    .and_modify(|ws_in_acc| {
+                        ws_in_acc.count += record_in_e.1.count;
+                        ws_in_acc.sum += record_in_e.1.sum;
+                        if record_in_e.1.min < ws_in_acc.min {
+                            ws_in_acc.min = record_in_e.1.min;
+                        }
+                        if record_in_e.1.max > ws_in_acc.max {
+                            ws_in_acc.max = record_in_e.1.max;
+                        }
+                    })
+                    .or_insert_with(|| record_in_e.1);
+            });
+            acc
+        })
+        .unwrap();
+
+    eprintln!("Merging: {:?}", start.elapsed());
+    fun
+}
 
 // printing 100_000_000
 // using no lock: 1.9ms
